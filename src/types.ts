@@ -32,9 +32,9 @@ export const SortOrder = z.enum(['Highest Rated', 'Most Downloaded', 'Newest']);
 export const TimePeriod = z.enum(['AllTime', 'Year', 'Month', 'Week', 'Day']);
 export const ImageSort = z.enum(['Most Reactions', 'Most Comments', 'Newest']);
 export const CommercialUse = z.enum(['None', 'Image', 'Rent', 'Sell']);
-export const FileFormat = z.enum(['SafeTensor', 'PickleTensor', 'Other']);
+export const FileFormat = z.enum(['SafeTensor', 'PickleTensor', 'Diffusers', 'GGUF', 'Other']);
 export const FileSize = z.enum(['full', 'pruned']);
-export const FloatingPoint = z.enum(['fp16', 'fp32', 'bf16']); // Added bf16
+export const FloatingPoint = z.enum(['fp8', 'fp16', 'bf16', 'fp32', 'nf4']);
 
 // Base schemas - API has inconsistent metadata structure
 export const MetadataSchema = z.object({
