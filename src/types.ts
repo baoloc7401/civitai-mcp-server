@@ -4,12 +4,27 @@ import { z } from 'zod';
 export const NSFWLevel = z.enum(['None', 'Soft', 'Mature', 'X']);
 export const ModelType = z.enum([
   'Checkpoint',
-  'TextualInversion', 
+  'TextualInversion',
   'Hypernetwork',
   'AestheticGradient',
   'LORA',
+  'LoCon',
+  'DoRA',
   'Controlnet',
-  'Poses'
+  'Upscaler',
+  'MotionModule',
+  'VAE',
+  'TextEncoder',
+  'UNet',
+  'CLIPVision',
+  'Poses',
+  'Wildcards',
+  'Workflows',
+  'Detection',
+  'VisionLanguage',
+  'CLIP',
+  'LLM',
+  'Other'
 ]);
 
 export const ModelMode = z.enum(['Archived', 'TakenDown']).nullable().optional();
@@ -107,7 +122,7 @@ export const ModelSchema = z.object({
   nsfw: z.boolean(),
   tags: z.array(z.string()),
   mode: ModelMode,
-  creator: CreatorSchema,
+  creator: CreatorSchema.optional(), // Some models (e.g. certain utility types) omit creator
   stats: StatsSchema.optional(),
   modelVersions: z.array(ModelVersionSchema),
   poi: z.boolean().optional(),

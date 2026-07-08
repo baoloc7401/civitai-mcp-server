@@ -105,7 +105,7 @@ class CivitaiMCPServer {
               type: 'array', 
               items: { 
                 type: 'string',
-                enum: ['Checkpoint', 'TextualInversion', 'Hypernetwork', 'AestheticGradient', 'LORA', 'Controlnet', 'Poses']
+                enum: ['Checkpoint', 'TextualInversion', 'Hypernetwork', 'AestheticGradient', 'LORA', 'LoCon', 'DoRA', 'Controlnet', 'Upscaler', 'MotionModule', 'VAE', 'TextEncoder', 'UNet', 'CLIPVision', 'Poses', 'Wildcards', 'Workflows', 'Detection', 'VisionLanguage', 'CLIP', 'LLM', 'Other']
               },
               description: 'Filter by model types'
             },
@@ -297,7 +297,7 @@ class CivitaiMCPServer {
           properties: {
             type: { 
               type: 'string',
-              enum: ['Checkpoint', 'TextualInversion', 'Hypernetwork', 'AestheticGradient', 'LORA', 'Controlnet', 'Poses'],
+              enum: ['Checkpoint', 'TextualInversion', 'Hypernetwork', 'AestheticGradient', 'LORA', 'LoCon', 'DoRA', 'Controlnet', 'Upscaler', 'MotionModule', 'VAE', 'TextEncoder', 'UNet', 'CLIPVision', 'Poses', 'Wildcards', 'Workflows', 'Detection', 'VisionLanguage', 'CLIP', 'LLM', 'Other'],
               description: 'Model type to filter by'
             },
             limit: { type: 'number', description: 'Number of models to return (default: 20)', minimum: 1, maximum: 100 },
@@ -331,7 +331,7 @@ class CivitaiMCPServer {
         id: model.id,
         name: model.name,
         type: model.type,
-        creator: model.creator.username,
+        creator: model.creator?.username || 'Unknown',
         description: model.description.substring(0, 200) + (model.description.length > 200 ? '...' : ''),
         tags: model.tags.slice(0, 5), // Limit tags for readability
         nsfw: model.nsfw,
@@ -367,8 +367,8 @@ class CivitaiMCPServer {
       description: model.description,
       type: model.type,
       creator: {
-        username: model.creator.username,
-        avatar: model.creator.image,
+        username: model.creator?.username || 'Unknown',
+        avatar: model.creator?.image,
       },
       tags: model.tags,
       nsfw: model.nsfw,
