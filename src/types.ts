@@ -85,7 +85,7 @@ export const ModelFileSchema = z.object({
 export const ImageSchema = z.object({
   id: z.number().optional(), // Some API responses don't include ID
   url: z.string(),
-  hash: z.string(),
+  hash: z.string().nullable().optional(), // API returns null for some images
   width: z.number(),
   height: z.number(),
   nsfw: z.boolean().optional(),
@@ -158,7 +158,7 @@ export const TagsResponseSchema = z.object({
 export const ModelVersionResponseSchema = z.object({
   id: z.number(),
   name: z.string(),
-  description: z.string(),
+  description: z.string().nullable().optional(), // API returns null when version has no description
   model: z.object({
     name: z.string(),
     type: ModelType,

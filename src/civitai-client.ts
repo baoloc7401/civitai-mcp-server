@@ -153,7 +153,9 @@ export class CivitaiClient {
 
   // Helper methods for downloading
   getDownloadUrl(modelVersionId: number): string {
-    return this.buildUrl(`/download/models/${modelVersionId}`);
+    // Never embed the API key here: this URL is returned to the caller in
+    // plain text. Authenticated downloads must append their own token.
+    return `${this.baseUrl}/download/models/${modelVersionId}`;
   }
 
   // Search helper methods

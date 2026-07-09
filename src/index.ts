@@ -372,16 +372,16 @@ class CivitaiMCPServer {
       },
       tags: model.tags,
       nsfw: model.nsfw,
-      stats: model.stats,
+      stats: model.stats || {},
       versions: model.modelVersions.map((version: any) => ({
         id: version.id,
         name: version.name,
         description: version.description,
         createdAt: version.createdAt,
-        trainedWords: version.trainedWords,
+        trainedWords: version.trainedWords || [],
         downloadUrl: version.downloadUrl,
-        stats: version.stats,
-        files: version.files.map((file: any) => ({
+        stats: version.stats || {},
+        files: (version.files || []).map((file: any) => ({
           sizeKb: file.sizeKb,
           format: file.metadata?.format,
           fp: file.metadata?.fp,
@@ -391,7 +391,7 @@ class CivitaiMCPServer {
             virus: file.virusScanResult,
           },
         })),
-        imageCount: version.images.length,
+        imageCount: version.images?.length || 0,
       })),
     };
   }
@@ -461,7 +461,7 @@ class CivitaiMCPServer {
             `**Downloads:** ${version.stats.downloadCount?.toLocaleString() || 0}\\n` +
             `**Rating:** ${version.stats.rating?.toFixed(1) || 'N/A'}\\n\\n` +
             `**Trained Words:** ${version.trainedWords.join(', ') || 'None'}\\n\\n` +
-            `**Description:**\\n${version.description}\\n\\n` +
+            `**Description:**\\n${version.description || 'No description available'}\\n\\n` +
             `**Files (${version.files?.length || 0}):**\\n${version.files?.map(file => 
               `- Size: ${file.sizeKb ? (file.sizeKb / 1024).toFixed(1) : 'Unknown'} MB\\n` +
               `  Format: ${file.metadata?.format || 'Unknown'}\\n` +
@@ -490,7 +490,7 @@ class CivitaiMCPServer {
             `**Created:** ${new Date(version.createdAt).toLocaleDateString()}\\n` +
             `**Downloads:** ${version.stats.downloadCount?.toLocaleString() || 0}\\n` +
             `**Trained Words:** ${version.trainedWords.join(', ') || 'None'}\\n\\n` +
-            `**Description:**\\n${version.description}`,
+            `**Description:**\\n${version.description || 'No description available'}`,
         },
       ],
     };
@@ -582,7 +582,7 @@ class CivitaiMCPServer {
           text: `# Latest Models\\n\\n${formatted.models.map((model: any) => 
             `**${model.name}** (${model.type})\\n` +
             `Creator: ${model.creator}\\n` +
-            `Created: ${model.latestVersion ? new Date(model.latestVersion.createdAt).toLocaleDateString() : 'Unknown'}\\n` +
+            `Created: ${model.latestVersion?.createdAt ? new Date(model.latestVersion.createdAt).toLocaleDateString() : 'Unknown'}\\n` +
             `${model.description}\\n\\n`
           ).join('---\\n')}`,
         },
