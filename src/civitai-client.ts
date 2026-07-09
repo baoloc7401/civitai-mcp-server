@@ -76,11 +76,9 @@ export class CivitaiClient {
 
   private buildUrl(endpoint: string, params: Record<string, any> = {}): string {
     const url = new URL(`${this.baseUrl}${endpoint}`);
-    
-    // Add API key if available
-    if (this.apiKey) {
-      url.searchParams.set('token', this.apiKey);
-    }
+
+    // The API key is sent via the Authorization header in makeRequest, never
+    // as a query param — URLs surface in tool output, logs, and error text.
 
     // Add other parameters
     Object.entries(params).forEach(([key, value]) => {
