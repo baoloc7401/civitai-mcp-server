@@ -17,7 +17,29 @@ import {
   TimePeriod,
   ImageSort,
   NSFWLevel,
-  CommercialUse
+  CommercialUse,
+  EnumsResponse,
+  EnumsResponseSchema,
+  CurrentUser,
+  CurrentUserSchema,
+  UsersResponse,
+  UsersResponseSchema,
+  PermissionsCheckResponse,
+  PermissionsCheckResponseSchema,
+  VaultGetResponse,
+  VaultGetResponseSchema,
+  VaultAllResponse,
+  VaultAllResponseSchema,
+  VaultCheckResponse,
+  VaultCheckResponseSchema,
+  VaultToggleResponse,
+  VaultToggleResponseSchema,
+  ModelVersionMini,
+  ModelVersionMiniSchema,
+  BulkHashLookupResponse,
+  BulkHashLookupResponseSchema,
+  BulkHashIdsResponse,
+  BulkHashIdsResponseSchema,
 } from './types.js';
 
 export interface ModelsParams {
@@ -40,6 +62,36 @@ export interface ModelsParams {
   supportsGeneration?: boolean;
   ids?: number[];
   baseModels?: string[];
+  checkpointType?: string;
+  fromPlatform?: boolean;
+  earlyAccess?: boolean;
+  cursor?: string;
+}
+
+export interface UsersParams {
+  ids?: number[];
+  query?: string;
+}
+
+export interface PermissionsCheckParams {
+  entityIds: number[];
+  entityType?: string;
+  permission?: string;
+  userId?: number;
+}
+
+export interface VaultItemsParams {
+  limit?: number;
+  page?: number;
+  query?: string;
+  types?: string[];
+  categories?: string[];
+  baseModels?: string[];
+  dateCreatedFrom?: string;
+  dateCreatedTo?: string;
+  dateAddedFrom?: string;
+  dateAddedTo?: string;
+  sort?: string;
 }
 
 export interface ImagesParams {
@@ -94,13 +146,19 @@ export class CivitaiClient {
     return url.toString();
   }
 
-  private async makeRequest<T>(url: string, schema: any): Promise<T> {
+  private async makeRequest<T>(
+    url: string,
+    schema: any,
+    options: { method?: string; body?: unknown } = {}
+  ): Promise<T> {
     try {
       const response = await fetch(url, {
+        method: options.method ?? 'GET',
         headers: {
           'Content-Type': 'application/json',
           ...(this.apiKey && { 'Authorization': `Bearer ${this.apiKey}` })
-        }
+        },
+        ...(options.body !== undefined && { body: JSON.stringify(options.body) })
       });
 
       if (!response.ok) {
@@ -111,6 +169,14 @@ export class CivitaiClient {
       return schema.parse(data);
     } catch (error) {
       throw new Error(`API request failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  // Endpoints under /me, /vault/* require a token; fail fast with a clear
+  // message instead of letting these 401 with no context.
+  private requireAuth(): void {
+    if (!this.apiKey) {
+      throw new Error('This endpoint requires CIVITAI_API_KEY to be set.');
     }
   }
 
@@ -198,5 +264,104 @@ export class CivitaiClient {
       limit,
       nsfw: false
     });
+  }
+
+  // Enums
+  async getEnums(): Promise<EnumsResponse> {
+    const url = this.buildUrl('/enums');
+    return this.makeRequest<EnumsResponse>(url, EnumsResponseSchema);
+  }
+
+  // Users
+  async getCurrentUser(): Promise<CurrentUser> {
+    this.requireAuth();
+    const url = this.buildUrl('/me');
+    return this.makeRequest<CurrentUser>(url, CurrentUserSchema);
+  }
+
+  async lookupUsers(params: UsersParams = {}): Promise<UsersResponse> {
+    const url = this.buildUrl('/users', {
+      ids: params.ids?.join(','),
+      query: params.query,
+    });
+    return this.makeRequest<UsersResponse>(url, UsersResponseSchema);
+  }
+
+  // Permissions
+  async checkPermissions(params: PermissionsCheckParams): Promise<PermissionsCheckResponse> {
+    const url = this.buildUrl('/permissions/check', {
+      entityIds: params.entityIds.join(','),
+      entityType: params.entityType,
+      permission: params.permission,
+      userId: params.userId,
+    });
+    return this.makeRequest<PermissionsCheckResponse>(url, PermissionsCheckResponseSchema);
+  }
+
+  // Vault
+  async getVault(): Promise<VaultGetResponse> {
+    this.requireAuth();
+    const url = this.buildUrl('/vault/get');
+    return this.makeRequest<VaultGetResponse>(url, VaultGetResponseSchema);
+  }
+
+  async getVaultItems(params: VaultItemsParams = {}): Promise<VaultAllResponse> {
+    this.requireAuth();
+    const url = this.buildUrl('/vault/all', {
+      limit: params.limit,
+      page: params.page,
+      query: params.query,
+      types: params.types?.join(','),
+      categories: params.categories?.join(','),
+      baseModels: params.baseModels?.join(','),
+      dateCreatedFrom: params.dateCreatedFrom,
+      dateCreatedTo: params.dateCreatedTo,
+      dateAddedFrom: params.dateAddedFrom,
+      dateAddedTo: params.dateAddedTo,
+      sort: params.sort,
+    });
+    return this.makeRequest<VaultAllResponse>(url, VaultAllResponseSchema);
+  }
+
+  async checkVaultItems(modelVersionIds: number[]): Promise<VaultCheckResponse> {
+    this.requireAuth();
+    const url = this.buildUrl('/vault/check-vault', {
+      modelVersionIds: modelVersionIds.join(','),
+    });
+    return this.makeRequest<VaultCheckResponse>(url, VaultCheckResponseSchema);
+  }
+
+  async toggleVaultVersion(modelVersionId: number): Promise<VaultToggleResponse> {
+    this.requireAuth();
+    const url = this.buildUrl('/vault/toggle-version', { modelVersionId });
+    return this.makeRequest<VaultToggleResponse>(url, VaultToggleResponseSchema, { method: 'POST' });
+  }
+
+  // Bulk model-version hash lookups
+  async getModelVersionsByHash(hashes: string[]): Promise<BulkHashLookupResponse> {
+    if (hashes.length === 0 || hashes.length > 100) {
+      throw new Error('hashes must contain between 1 and 100 SHA256 hashes.');
+    }
+    const url = this.buildUrl('/model-versions/by-hash');
+    return this.makeRequest<BulkHashLookupResponse>(url, BulkHashLookupResponseSchema, {
+      method: 'POST',
+      body: hashes,
+    });
+  }
+
+  async getModelVersionIdsByHash(hashes: string[]): Promise<BulkHashIdsResponse> {
+    if (hashes.length === 0 || hashes.length > 10000) {
+      throw new Error('hashes must contain between 1 and 10,000 SHA256 hashes.');
+    }
+    const url = this.buildUrl('/model-versions/by-hash/ids');
+    return this.makeRequest<BulkHashIdsResponse>(url, BulkHashIdsResponseSchema, {
+      method: 'POST',
+      body: hashes,
+    });
+  }
+
+  async getModelVersionMini(modelVersionId: number, epoch?: number): Promise<ModelVersionMini> {
+    const url = this.buildUrl(`/model-versions/mini/${modelVersionId}`, { epoch });
+    return this.makeRequest<ModelVersionMini>(url, ModelVersionMiniSchema);
   }
 }

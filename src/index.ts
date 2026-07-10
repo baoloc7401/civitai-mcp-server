@@ -74,6 +74,28 @@ class CivitaiMCPServer {
             return await this.getModelsByType(args);
           case 'get_download_url':
             return await this.getDownloadUrl(args);
+          case 'get_enums':
+            return await this.getEnums(args);
+          case 'get_current_user':
+            return await this.getCurrentUser(args);
+          case 'lookup_users':
+            return await this.lookupUsers(args);
+          case 'check_generation_permissions':
+            return await this.checkGenerationPermissions(args);
+          case 'get_vault':
+            return await this.getVault(args);
+          case 'list_vault_items':
+            return await this.listVaultItems(args);
+          case 'check_vault_items':
+            return await this.checkVaultItems(args);
+          case 'toggle_vault_item':
+            return await this.toggleVaultItem(args);
+          case 'get_model_versions_by_hash':
+            return await this.getModelVersionsByHash(args);
+          case 'get_model_version_ids_by_hash':
+            return await this.getModelVersionIdsByHash(args);
+          case 'get_model_version_mini':
+            return await this.getModelVersionMini(args);
           default:
             throw new Error(`Unknown tool: ${name}`);
         }
@@ -124,7 +146,15 @@ class CivitaiMCPServer {
               type: 'array',
               items: { type: 'string' },
               description: 'Filter by base model types (e.g., ["SD 1.5", "SDXL 1.0"])'
-            }
+            },
+            checkpointType: {
+              type: 'string',
+              enum: ['Standard', 'Trained', 'Merge'],
+              description: 'For checkpoint models only'
+            },
+            fromPlatform: { type: 'boolean', description: 'Only return models trained on Civitai' },
+            earlyAccess: { type: 'boolean', description: 'Include early-access versions' },
+            cursor: { type: 'string', description: 'Opaque pagination cursor from a previous response’s metadata.nextCursor; required for deep paging past 1000 results' }
           },
         },
       },
@@ -317,6 +347,131 @@ class CivitaiMCPServer {
           type: 'object',
           properties: {
             modelVersionId: { type: 'number', description: 'The ID of the model version to get download URL for' },
+          },
+          required: ['modelVersionId'],
+        },
+      },
+      {
+        name: 'get_enums',
+        description: 'Get the current set of valid enum values used by the Civitai API (model types, file types, base models). Use this to discover valid values instead of relying on hardcoded lists.',
+        inputSchema: {
+          type: 'object',
+          properties: {},
+        },
+      },
+      {
+        name: 'get_current_user',
+        description: 'Get the Civitai account that CIVITAI_API_KEY belongs to, including membership tier and subscription status. Requires CIVITAI_API_KEY.',
+        inputSchema: {
+          type: 'object',
+          properties: {},
+        },
+      },
+      {
+        name: 'lookup_users',
+        description: 'Resolve user IDs to usernames, or search usernames by prefix. Omitting both ids and query returns an arbitrary small set of users, so always pass one.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            ids: { type: 'array', items: { type: 'number' }, description: 'Specific user IDs to look up' },
+            query: { type: 'string', description: 'Username prefix to search for' },
+          },
+        },
+      },
+      {
+        name: 'check_generation_permissions',
+        description: 'Check in bulk whether model versions can currently be used for generation (e.g. early-access gating). Useful before submitting a generation job.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            entityIds: { type: 'array', items: { type: 'number' }, description: 'Model version IDs to check' },
+            entityType: { type: 'string', enum: ['ModelVersion'], description: 'Kind of entity being checked (currently only ModelVersion is supported)' },
+            permission: { type: 'string', enum: ['Generate'], description: 'Permission to check (currently only Generate is supported)' },
+            userId: { type: 'number', description: 'Run the check on behalf of this user instead of the token owner' },
+          },
+          required: ['entityIds'],
+        },
+      },
+      {
+        name: 'get_vault',
+        description: 'Get the Civitai Vault (persistent model-version collection) belonging to the CIVITAI_API_KEY account. Requires an active paid membership; requires CIVITAI_API_KEY.',
+        inputSchema: {
+          type: 'object',
+          properties: {},
+        },
+      },
+      {
+        name: 'list_vault_items',
+        description: 'List model versions stored in the caller\'s Civitai Vault. Requires CIVITAI_API_KEY and an active paid membership.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            limit: { type: 'number', description: 'Items per page (1-200, default 60)', minimum: 1, maximum: 200 },
+            page: { type: 'number', description: '1-indexed page number', minimum: 1 },
+            query: { type: 'string', description: 'Substring match against model name, version name, or creator name' },
+            types: { type: 'array', items: { type: 'string' }, description: 'Filter by model types (e.g. ["Checkpoint", "LORA"])' },
+            categories: { type: 'array', items: { type: 'string' }, description: 'Filter by category' },
+            baseModels: { type: 'array', items: { type: 'string' }, description: 'Filter by base models (e.g. ["SDXL 1.0"])' },
+            dateCreatedFrom: { type: 'string', description: 'ISO date lower bound on the model version\'s createdAt' },
+            dateCreatedTo: { type: 'string', description: 'ISO date upper bound on the model version\'s createdAt' },
+            dateAddedFrom: { type: 'string', description: 'ISO date lower bound on when the item was added to the vault' },
+            dateAddedTo: { type: 'string', description: 'ISO date upper bound on when the item was added to the vault' },
+            sort: { type: 'string', enum: ['Recently Added', 'Recently Created', 'Model Name', 'Model Size'], description: 'Sort order' },
+          },
+        },
+      },
+      {
+        name: 'check_vault_items',
+        description: 'Check which of the given model version IDs are already in the caller\'s Vault. Requires CIVITAI_API_KEY.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            modelVersionIds: { type: 'array', items: { type: 'number' }, description: 'Model version IDs to check' },
+          },
+          required: ['modelVersionIds'],
+        },
+      },
+      {
+        name: 'toggle_vault_item',
+        description: 'Add a model version to the caller\'s Vault if it isn\'t there, or remove it if it is. Requires CIVITAI_API_KEY.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            modelVersionId: { type: 'number', description: 'Model version ID to add or remove' },
+          },
+          required: ['modelVersionId'],
+        },
+      },
+      {
+        name: 'get_model_versions_by_hash',
+        description: 'Look up full model version details for up to 100 file hashes (SHA256) in a single request. Hashes with no match are silently dropped from the response.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            hashes: { type: 'array', items: { type: 'string' }, description: 'Up to 100 SHA256 file hashes', minItems: 1, maxItems: 100 },
+          },
+          required: ['hashes'],
+        },
+      },
+      {
+        name: 'get_model_version_ids_by_hash',
+        description: 'Resolve up to 10,000 file hashes (SHA256) to model version IDs. Cheaper than get_model_versions_by_hash when you only need IDs.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            hashes: { type: 'array', items: { type: 'string' }, description: 'Up to 10,000 SHA256 file hashes', minItems: 1, maxItems: 10000 },
+          },
+          required: ['hashes'],
+        },
+      },
+      {
+        name: 'get_model_version_mini',
+        description: 'Get a lightweight model version summary optimized for download/generation checks (canGenerate, requireAuth, downloadUrls) without the heavier images/description/files fields.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            modelVersionId: { type: 'number', description: 'The ID of the model version to retrieve' },
+            epoch: { type: 'number', description: 'For private training-result versions, request a specific epoch\'s file' },
           },
           required: ['modelVersionId'],
         },
@@ -676,6 +831,205 @@ class CivitaiMCPServer {
           text: `Download URL for model version ${modelVersionId}:\\n\\n${downloadUrl}\\n\\n` +
             `**Note:** Use \`wget "${downloadUrl}" --content-disposition\` to download with proper filename.\\n` +
             `If the model requires authentication, add your API key: \`?token=YOUR_API_KEY\``,
+        },
+      ],
+    };
+  }
+
+  private async getEnums(args: any) {
+    const enums = await this.client.getEnums();
+
+    return {
+      content: [
+        {
+          type: 'text',
+          text: Object.entries(enums)
+            .map(([name, values]) => `**${name}**\\n${(values || []).map((v: string) => `- ${v}`).join('\\n')}`)
+            .join('\\n\\n'),
+        },
+      ],
+    };
+  }
+
+  private async getCurrentUser(args: any) {
+    const user = await this.client.getCurrentUser();
+
+    return {
+      content: [
+        {
+          type: 'text',
+          text: `# Current User\\n\\n` +
+            `**ID:** ${user.id}\\n` +
+            `**Username:** ${user.username}\\n` +
+            `**Tier:** ${user.tier || 'free'}\\n` +
+            `**Status:** ${user.status || 'Unknown'}\\n` +
+            `**Member:** ${user.isMember ? 'Yes' : 'No'}\\n` +
+            `**Subscriptions:** ${(user.subscriptions || []).join(', ') || 'None'}`,
+        },
+      ],
+    };
+  }
+
+  private async lookupUsers(args: any) {
+    const response = await this.client.lookupUsers(args);
+
+    return {
+      content: [
+        {
+          type: 'text',
+          text: `Found ${response.items.length} user(s):\\n\\n${response.items.map(user =>
+            `**${user.username}** (ID: ${user.id})${user.avatarNsfw && user.avatarNsfw !== 'None' && user.avatarNsfw !== 0 ? ` [avatar: ${user.avatarNsfw}]` : ''}`
+          ).join('\\n')}`,
+        },
+      ],
+    };
+  }
+
+  private async checkGenerationPermissions(args: any) {
+    const response = await this.client.checkPermissions(args);
+    const entries = Array.isArray(response) ? [] : Object.entries(response);
+
+    return {
+      content: [
+        {
+          type: 'text',
+          text: entries.length === 0
+            ? 'No entities to check (or none matched).'
+            : `Generation permission by entity ID:\\n\\n${entries.map(([id, allowed]) =>
+                `- ${id}: ${allowed ? 'Allowed' : 'Not allowed'}`
+              ).join('\\n')}`,
+        },
+      ],
+    };
+  }
+
+  private async getVault(args: any) {
+    const response = await this.client.getVault();
+
+    if (!response.vault) {
+      return {
+        content: [
+          { type: 'text', text: 'No vault available. This requires an active paid Civitai membership.' },
+        ],
+      };
+    }
+
+    const vault = response.vault;
+    return {
+      content: [
+        {
+          type: 'text',
+          text: `# Vault\\n\\n` +
+            `**Owner ID:** ${vault.userId}\\n` +
+            `**Storage:** ${((vault.usedStorageKb || 0) / 1024 / 1024).toFixed(2)} GB / ${((vault.storageKb || 0) / 1024 / 1024).toFixed(2)} GB\\n` +
+            `**Last updated:** ${vault.updatedAt ? new Date(vault.updatedAt).toLocaleString() : 'Unknown'}`,
+        },
+      ],
+    };
+  }
+
+  private async listVaultItems(args: any) {
+    const response = await this.client.getVaultItems(args);
+
+    return {
+      content: [
+        {
+          type: 'text',
+          text: `Found ${response.totalItems ?? response.items.length} vault item(s):\\n\\n${response.items.map(item =>
+            `**${item.modelName}** - ${item.versionName} (${item.type})\\n` +
+            `Creator: ${item.creatorName || 'Unknown'}\\n` +
+            `Status: ${item.status || 'Unknown'}\\n` +
+            `Model version ID: ${item.modelVersionId}\\n` +
+            `Added: ${item.addedAt ? new Date(item.addedAt).toLocaleDateString() : 'Unknown'}\\n`
+          ).join('\\n---\\n')}\\n\\nPage ${response.currentPage || 1} of ${response.totalPages || 1}`,
+        },
+      ],
+    };
+  }
+
+  private async checkVaultItems(args: any) {
+    const response = await this.client.checkVaultItems(args.modelVersionIds);
+
+    return {
+      content: [
+        {
+          type: 'text',
+          text: response.map(entry =>
+            `- Model version ${entry.modelVersionId}: ${entry.vaultItem ? 'In vault' : 'Not in vault'}`
+          ).join('\\n'),
+        },
+      ],
+    };
+  }
+
+  private async toggleVaultItem(args: any) {
+    const { modelVersionId } = args;
+    const response = await this.client.toggleVaultVersion(modelVersionId);
+
+    return {
+      content: [
+        {
+          type: 'text',
+          text: response.vaultId
+            ? `Added model version ${modelVersionId} to the vault (vault ID: ${response.vaultId}).`
+            : `Removed model version ${modelVersionId} from the vault.`,
+        },
+      ],
+    };
+  }
+
+  private async getModelVersionsByHash(args: any) {
+    const versions = await this.client.getModelVersionsByHash(args.hashes);
+
+    return {
+      content: [
+        {
+          type: 'text',
+          text: versions.length === 0
+            ? 'No model versions matched the given hashes.'
+            : versions.map(version =>
+                `**${version.model.name}** - ${version.name} (ID: ${version.id})\\n` +
+                `Type: ${version.model.type}\\n` +
+                `Downloads: ${version.stats.downloadCount?.toLocaleString() || 0}`
+              ).join('\\n---\\n'),
+        },
+      ],
+    };
+  }
+
+  private async getModelVersionIdsByHash(args: any) {
+    const results = await this.client.getModelVersionIdsByHash(args.hashes);
+
+    return {
+      content: [
+        {
+          type: 'text',
+          text: results.length === 0
+            ? 'No model versions matched the given hashes.'
+            : results.map(r => `- ${r.hash} → model version ${r.modelVersionId}`).join('\\n'),
+        },
+      ],
+    };
+  }
+
+  private async getModelVersionMini(args: any) {
+    const { modelVersionId, epoch } = args;
+    const version = await this.client.getModelVersionMini(modelVersionId, epoch);
+
+    return {
+      content: [
+        {
+          type: 'text',
+          text: `# ${version.modelName} - ${version.versionName}\\n\\n` +
+            `**AIR:** ${version.air}\\n` +
+            `**Base Model:** ${version.baseModel}\\n` +
+            `**Can Generate:** ${version.canGenerate ? 'Yes' : 'No'}\\n` +
+            `**Requires Auth to Download:** ${version.requireAuth ? 'Yes' : 'No'}\\n` +
+            `**Gated (early access/private):** ${version.checkPermission ? 'Yes' : 'No'}\\n` +
+            (version.earlyAccessEndsAt ? `**Early Access Ends:** ${new Date(version.earlyAccessEndsAt).toLocaleString()}\\n` : '') +
+            `**File:** ${version.fileName || 'Unknown'} (${version.format || 'Unknown'})\\n` +
+            `**Download URLs:** ${(version.downloadUrls || []).join(', ') || 'None'}\\n` +
+            `**SHA256:** ${version.hashes?.SHA256 || 'Unknown'}`,
         },
       ],
     };
