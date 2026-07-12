@@ -117,7 +117,7 @@ export const ModelVersionSchema = z.object({
 export const ModelSchema = z.object({
   id: z.number(),
   name: z.string(),
-  description: z.string(),
+  description: z.string().nullable().optional(),
   type: ModelType,
   nsfw: z.boolean(),
   tags: z.array(z.string()),

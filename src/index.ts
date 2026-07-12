@@ -487,7 +487,9 @@ class CivitaiMCPServer {
         name: model.name,
         type: model.type,
         creator: model.creator?.username || 'Unknown',
-        description: model.description.substring(0, 200) + (model.description.length > 200 ? '...' : ''),
+        description: model.description
+          ? model.description.substring(0, 200) + (model.description.length > 200 ? '...' : '')
+          : 'No description available',
         tags: model.tags.slice(0, 5), // Limit tags for readability
         nsfw: model.nsfw,
         stats: {
@@ -519,7 +521,7 @@ class CivitaiMCPServer {
     return {
       id: model.id,
       name: model.name,
-      description: model.description,
+      description: model.description || 'No description available',
       type: model.type,
       creator: {
         username: model.creator?.username || 'Unknown',
