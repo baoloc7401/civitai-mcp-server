@@ -146,29 +146,69 @@ export class CivitaiClient {
     return url.toString();
   }
 
+  private sleep(ms: number): Promise<void> {
+    return new Promise(resolve => setTimeout(resolve, ms));
+  }
+
+  // Exponential backoff with jitter, capped low so a single tool call stays
+  // responsive. Honors Retry-After when the server sends one — ignoring an
+  // explicit backpressure signal in favor of our own schedule is exactly the
+  // kind of client behavior that gets flagged as abusive.
+  private computeBackoffMs(attempt: number, retryAfterHeader: string | null): number {
+    const cap = 3000;
+    if (retryAfterHeader) {
+      const seconds = Number(retryAfterHeader);
+      if (!Number.isNaN(seconds)) {
+        return Math.min(seconds * 1000, cap);
+      }
+      const untilDate = Date.parse(retryAfterHeader) - Date.now();
+      if (!Number.isNaN(untilDate) && untilDate > 0) {
+        return Math.min(untilDate, cap);
+      }
+    }
+    const base = 300 * 3 ** attempt; // 300ms, then 900ms
+    return Math.min(base + Math.random() * base * 0.3, cap);
+  }
+
   private async makeRequest<T>(
     url: string,
     schema: any,
-    options: { method?: string; body?: unknown } = {}
+    options: { method?: string; body?: unknown; retryable?: boolean } = {}
   ): Promise<T> {
-    try {
-      const response = await fetch(url, {
-        method: options.method ?? 'GET',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(this.apiKey && { 'Authorization': `Bearer ${this.apiKey}` })
-        },
-        ...(options.body !== undefined && { body: JSON.stringify(options.body) })
-      });
+    const method = options.method ?? 'GET';
+    // POST is only safe to auto-retry when it's actually a read (e.g. a bulk
+    // hash lookup sent as POST for body size). Mutations like vault toggling
+    // must opt out, since replaying them on a lost response would flip state
+    // back rather than confirm it.
+    const retryable = options.retryable ?? method === 'GET';
+    const maxRetries = 2;
 
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+    for (let attempt = 0; ; attempt++) {
+      try {
+        const response = await fetch(url, {
+          method,
+          headers: {
+            'Content-Type': 'application/json',
+            'User-Agent': 'civitai-mcp-server/1.0.0',
+            ...(this.apiKey && { 'Authorization': `Bearer ${this.apiKey}` })
+          },
+          ...(options.body !== undefined && { body: JSON.stringify(options.body) })
+        });
+
+        if (!response.ok) {
+          const transient = response.status === 502 || response.status === 503 || response.status === 504;
+          if (retryable && transient && attempt < maxRetries) {
+            await this.sleep(this.computeBackoffMs(attempt, response.headers.get('retry-after')));
+            continue;
+          }
+          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+
+        const data = await response.json();
+        return schema.parse(data);
+      } catch (error) {
+        throw new Error(`API request failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
       }
-
-      const data = await response.json();
-      return schema.parse(data);
-    } catch (error) {
-      throw new Error(`API request failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }
 
@@ -346,6 +386,7 @@ export class CivitaiClient {
     return this.makeRequest<BulkHashLookupResponse>(url, BulkHashLookupResponseSchema, {
       method: 'POST',
       body: hashes,
+      retryable: true, // read-only lookup, just POSTed for body size
     });
   }
 
@@ -357,6 +398,7 @@ export class CivitaiClient {
     return this.makeRequest<BulkHashIdsResponse>(url, BulkHashIdsResponseSchema, {
       method: 'POST',
       body: hashes,
+      retryable: true, // read-only lookup, just POSTed for body size
     });
   }
 
