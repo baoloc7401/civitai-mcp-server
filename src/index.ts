@@ -481,16 +481,16 @@ class CivitaiMCPServer {
 
   private formatModelsResponse(response: any) {
     const models = response.items.map((model: any) => {
-      const latestVersion = model.modelVersions[0];
+      const latestVersion = (model.modelVersions || [])[0];
       return {
         id: model.id,
-        name: model.name,
-        type: model.type,
+        name: model.name || 'Untitled',
+        type: model.type || 'Unknown',
         creator: model.creator?.username || 'Unknown',
         description: model.description
           ? model.description.substring(0, 200) + (model.description.length > 200 ? '...' : '')
           : 'No description available',
-        tags: model.tags.slice(0, 5), // Limit tags for readability
+        tags: (model.tags || []).slice(0, 5), // Limit tags for readability
         nsfw: model.nsfw,
         stats: {
           downloads: model.stats?.downloadCount || 0,
@@ -499,9 +499,9 @@ class CivitaiMCPServer {
         },
         latestVersion: latestVersion ? {
           id: latestVersion.id,
-          name: latestVersion.name,
+          name: latestVersion.name || 'Untitled',
           createdAt: latestVersion.createdAt,
-          trainedWords: latestVersion.trainedWords,
+          trainedWords: latestVersion.trainedWords || [],
         } : null,
       };
     });
@@ -520,19 +520,19 @@ class CivitaiMCPServer {
   private formatSingleModel(model: any) {
     return {
       id: model.id,
-      name: model.name,
+      name: model.name || 'Untitled',
       description: model.description || 'No description available',
-      type: model.type,
+      type: model.type || 'Unknown',
       creator: {
         username: model.creator?.username || 'Unknown',
         avatar: model.creator?.image,
       },
-      tags: model.tags,
+      tags: model.tags || [],
       nsfw: model.nsfw,
       stats: model.stats || {},
-      versions: model.modelVersions.map((version: any) => ({
+      versions: (model.modelVersions || []).map((version: any) => ({
         id: version.id,
-        name: version.name,
+        name: version.name || 'Untitled',
         description: version.description,
         createdAt: version.createdAt,
         trainedWords: version.trainedWords || [],
@@ -591,9 +591,9 @@ class CivitaiMCPServer {
             `**NSFW:** ${formatted.nsfw ? 'Yes' : 'No'}\\n\\n` +
             `**Tags:** ${formatted.tags.join(', ')}\\n\\n` +
             `**Description:**\\n${formatted.description}\\n\\n` +
-            `**Versions (${formatted.versions.length}):**\\n${formatted.versions.map((v: any) => 
+            `**Versions (${formatted.versions.length}):**\\n${formatted.versions.map((v: any) =>
               `- **${v.name}** (ID: ${v.id})\\n  ` +
-              `Created: ${new Date(v.createdAt).toLocaleDateString()}\\n  ` +
+              `Created: ${v.createdAt ? new Date(v.createdAt).toLocaleDateString() : 'Unknown'}\\n  ` +
               `Downloads: ${v.stats.downloadCount?.toLocaleString() || 0}\\n  ` +
               `Trained words: ${v.trainedWords.join(', ') || 'None'}\\n  ` +
               `Files: ${v.files.length} file(s)\\n`
@@ -611,21 +611,21 @@ class CivitaiMCPServer {
       content: [
         {
           type: 'text',
-          text: `# ${version.model.name} - ${version.name}\\n\\n` +
-            `**Model Type:** ${version.model.type}\\n` +
+          text: `# ${version.model.name || 'Untitled'} - ${version.name || 'Untitled'}\\n\\n` +
+            `**Model Type:** ${version.model.type || 'Unknown'}\\n` +
             `**Version ID:** ${version.id}\\n` +
-            `**Created:** ${new Date(version.createdAt).toLocaleDateString()}\\n` +
-            `**Downloads:** ${version.stats.downloadCount?.toLocaleString() || 0}\\n` +
-            `**Rating:** ${version.stats.rating?.toFixed(1) || 'N/A'}\\n\\n` +
-            `**Trained Words:** ${version.trainedWords.join(', ') || 'None'}\\n\\n` +
+            `**Created:** ${version.createdAt ? new Date(version.createdAt).toLocaleDateString() : 'Unknown'}\\n` +
+            `**Downloads:** ${version.stats?.downloadCount?.toLocaleString() || 0}\\n` +
+            `**Rating:** ${version.stats?.rating?.toFixed(1) || 'N/A'}\\n\\n` +
+            `**Trained Words:** ${(version.trainedWords || []).join(', ') || 'None'}\\n\\n` +
             `**Description:**\\n${version.description || 'No description available'}\\n\\n` +
-            `**Files (${version.files?.length || 0}):**\\n${version.files?.map(file => 
+            `**Files (${version.files?.length || 0}):**\\n${version.files?.map(file =>
               `- Size: ${file.sizeKb ? (file.sizeKb / 1024).toFixed(1) : 'Unknown'} MB\\n` +
               `  Format: ${file.metadata?.format || 'Unknown'}\\n` +
               `  FP: ${file.metadata?.fp || 'Unknown'}\\n` +
               `  Scans: Pickle=${file.pickleScanResult || 'Unknown'}, Virus=${file.virusScanResult || 'Unknown'}\\n`
             ).join('\\n') || 'No files available'}\\n` +
-            `**Sample Images:** ${version.images.length} available`,
+            `**Sample Images:** ${version.images?.length || 0} available`,
         },
       ],
     };
@@ -640,13 +640,13 @@ class CivitaiMCPServer {
         {
           type: 'text',
           text: `# Model Found by Hash\\n\\n` +
-            `**Model:** ${version.model.name}\\n` +
-            `**Version:** ${version.name} (ID: ${version.id})\\n` +
-            `**Type:** ${version.model.type}\\n` +
+            `**Model:** ${version.model.name || 'Untitled'}\\n` +
+            `**Version:** ${version.name || 'Untitled'} (ID: ${version.id})\\n` +
+            `**Type:** ${version.model.type || 'Unknown'}\\n` +
             `**Hash:** ${hash}\\n\\n` +
-            `**Created:** ${new Date(version.createdAt).toLocaleDateString()}\\n` +
-            `**Downloads:** ${version.stats.downloadCount?.toLocaleString() || 0}\\n` +
-            `**Trained Words:** ${version.trainedWords.join(', ') || 'None'}\\n\\n` +
+            `**Created:** ${version.createdAt ? new Date(version.createdAt).toLocaleDateString() : 'Unknown'}\\n` +
+            `**Downloads:** ${version.stats?.downloadCount?.toLocaleString() || 0}\\n` +
+            `**Trained Words:** ${(version.trainedWords || []).join(', ') || 'None'}\\n\\n` +
             `**Description:**\\n${version.description || 'No description available'}`,
         },
       ],
@@ -663,10 +663,10 @@ class CivitaiMCPServer {
           text: `Found ${response.metadata.totalItems || response.items.length} images:\\n\\n${response.items.map(image => 
             `**Image ID:** ${image.id}\\n` +
             `**Creator:** ${image.username || 'Unknown'}\\n` +
-            `**Dimensions:** ${image.width}x${image.height}\\n` +
+            `**Dimensions:** ${image.width ?? 'Unknown'}x${image.height ?? 'Unknown'}\\n` +
             `**NSFW Level:** ${image.nsfwLevel || 'Unknown'}\\n` +
             `**Reactions:** ❤️ ${image.stats?.heartCount || 0} | 👍 ${image.stats?.likeCount || 0} | 💬 ${image.stats?.commentCount || 0}\\n` +
-            `**URL:** ${image.url}\\n` +
+            `**URL:** ${image.url || 'Unknown'}\\n` +
             `**Created:** ${image.createdAt ? new Date(image.createdAt).toLocaleDateString() : 'Unknown'}\\n` +
             (image.meta ? `**Generation Info:** ${JSON.stringify(image.meta, null, 2).substring(0, 200)}...\\n` : '') +
             '\\n'
@@ -683,8 +683,8 @@ class CivitaiMCPServer {
       content: [
         {
           type: 'text',
-          text: `Found ${response.metadata.totalItems || response.items.length} creators:\\n\\n${response.items.map(creator => 
-            `**${creator.username}**\\n` +
+          text: `Found ${response.metadata.totalItems || response.items.length} creators:\\n\\n${response.items.map(creator =>
+            `**${creator.username || 'Unknown'}**\\n` +
             `Models: ${creator.modelCount || 0}\\n` +
             (creator.link ? `Profile: ${creator.link}\\n` : '') +
             '\\n'
@@ -701,8 +701,8 @@ class CivitaiMCPServer {
       content: [
         {
           type: 'text',
-          text: `Found ${response.metadata.totalItems || response.items.length} tags:\\n\\n${response.items.map(tag => 
-            `**${tag.name}** (${tag.modelCount || 0} models)\\n`
+          text: `Found ${response.metadata.totalItems || response.items.length} tags:\\n\\n${response.items.map(tag =>
+            `**${tag.name || 'Unknown'}** (${tag.modelCount || 0} models)\\n`
           ).join('')}\\nPage ${response.metadata.currentPage || 1} of ${response.metadata.totalPages || 1}`,
         },
       ],
@@ -862,7 +862,7 @@ class CivitaiMCPServer {
           type: 'text',
           text: `# Current User\\n\\n` +
             `**ID:** ${user.id}\\n` +
-            `**Username:** ${user.username}\\n` +
+            `**Username:** ${user.username || 'Unknown'}\\n` +
             `**Tier:** ${user.tier || 'free'}\\n` +
             `**Status:** ${user.status || 'Unknown'}\\n` +
             `**Member:** ${user.isMember ? 'Yes' : 'No'}\\n` +
@@ -880,7 +880,7 @@ class CivitaiMCPServer {
         {
           type: 'text',
           text: `Found ${response.items.length} user(s):\\n\\n${response.items.map(user =>
-            `**${user.username}** (ID: ${user.id})${user.avatarNsfw && user.avatarNsfw !== 'None' && user.avatarNsfw !== 0 ? ` [avatar: ${user.avatarNsfw}]` : ''}`
+            `**${user.username || 'Unknown'}** (ID: ${user.id})${user.avatarNsfw && user.avatarNsfw !== 'None' && user.avatarNsfw !== 0 ? ` [avatar: ${user.avatarNsfw}]` : ''}`
           ).join('\\n')}`,
         },
       ],
@@ -938,7 +938,7 @@ class CivitaiMCPServer {
         {
           type: 'text',
           text: `Found ${response.totalItems ?? response.items.length} vault item(s):\\n\\n${response.items.map(item =>
-            `**${item.modelName}** - ${item.versionName} (${item.type})\\n` +
+            `**${item.modelName || 'Unknown'}** - ${item.versionName || 'Unknown'} (${item.type || 'Unknown'})\\n` +
             `Creator: ${item.creatorName || 'Unknown'}\\n` +
             `Status: ${item.status || 'Unknown'}\\n` +
             `Model version ID: ${item.modelVersionId}\\n` +
@@ -990,9 +990,9 @@ class CivitaiMCPServer {
           text: versions.length === 0
             ? 'No model versions matched the given hashes.'
             : versions.map(version =>
-                `**${version.model.name}** - ${version.name} (ID: ${version.id})\\n` +
-                `Type: ${version.model.type}\\n` +
-                `Downloads: ${version.stats.downloadCount?.toLocaleString() || 0}`
+                `**${version.model.name || 'Untitled'}** - ${version.name || 'Untitled'} (ID: ${version.id})\\n` +
+                `Type: ${version.model.type || 'Unknown'}\\n` +
+                `Downloads: ${version.stats?.downloadCount?.toLocaleString() || 0}`
               ).join('\\n---\\n'),
         },
       ],
@@ -1022,7 +1022,7 @@ class CivitaiMCPServer {
       content: [
         {
           type: 'text',
-          text: `# ${version.modelName} - ${version.versionName}\\n\\n` +
+          text: `# ${version.modelName || 'Unknown'} - ${version.versionName || 'Unknown'}\\n\\n` +
             `**AIR:** ${version.air}\\n` +
             `**Base Model:** ${version.baseModel}\\n` +
             `**Can Generate:** ${version.canGenerate ? 'Yes' : 'No'}\\n` +

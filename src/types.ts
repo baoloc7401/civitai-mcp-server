@@ -61,7 +61,7 @@ export const StatsSchema = z.object({
 });
 
 export const CreatorSchema = z.object({
-  username: z.string(),
+  username: z.string().nullable().optional(),
   image: z.string().nullable().optional(),
   modelCount: z.number().optional(),
   link: z.string().optional(),
@@ -84,10 +84,10 @@ export const ModelFileSchema = z.object({
 
 export const ImageSchema = z.object({
   id: z.number().optional(), // Some API responses don't include ID
-  url: z.string(),
+  url: z.string().nullable().optional(),
   hash: z.string().nullable().optional(), // API returns null for some images
-  width: z.number(),
-  height: z.number(),
+  width: z.number().nullable().optional(),
+  height: z.number().nullable().optional(),
   nsfw: z.boolean().optional(),
   nsfwLevel: z.union([NSFWLevel, z.number()]).optional(), // API sometimes returns numbers
   createdAt: z.string().optional(),
@@ -102,7 +102,7 @@ export const ImageSchema = z.object({
 
 export const ModelVersionSchema = z.object({
   id: z.number(),
-  name: z.string(),
+  name: z.string().nullable().optional(),
   description: z.string().nullable().optional(),
   createdAt: z.string().optional(),
   downloadUrl: z.string().optional(),
@@ -116,20 +116,20 @@ export const ModelVersionSchema = z.object({
 
 export const ModelSchema = z.object({
   id: z.number(),
-  name: z.string(),
+  name: z.string().nullable().optional(),
   description: z.string().nullable().optional(),
-  type: ModelType,
-  nsfw: z.boolean(),
-  tags: z.array(z.string()),
+  type: ModelType.nullable().optional(),
+  nsfw: z.boolean().nullable().optional(),
+  tags: z.array(z.string()).nullable().optional(),
   mode: ModelMode,
   creator: CreatorSchema.optional(), // Some models (e.g. certain utility types) omit creator
   stats: StatsSchema.optional(),
-  modelVersions: z.array(ModelVersionSchema),
+  modelVersions: z.array(ModelVersionSchema).nullable().optional(),
   poi: z.boolean().optional(),
 });
 
 export const TagSchema = z.object({
-  name: z.string(),
+  name: z.string().nullable().optional(),
   modelCount: z.number().optional(),
   link: z.string().optional(),
 });
@@ -157,22 +157,22 @@ export const TagsResponseSchema = z.object({
 
 export const ModelVersionResponseSchema = z.object({
   id: z.number(),
-  name: z.string(),
+  name: z.string().nullable().optional(),
   description: z.string().nullable().optional(), // API returns null when version has no description
   model: z.object({
-    name: z.string(),
-    type: ModelType,
-    nsfw: z.boolean(),
+    name: z.string().nullable().optional(),
+    type: ModelType.nullable().optional(),
+    nsfw: z.boolean().nullable().optional(),
     poi: z.boolean().optional(),
     mode: ModelMode,
   }),
   modelId: z.number(),
-  createdAt: z.string(),
-  downloadUrl: z.string(),
-  trainedWords: z.array(z.string()),
-  files: z.array(ModelFileSchema),
-  stats: StatsSchema,
-  images: z.array(ImageSchema),
+  createdAt: z.string().nullable().optional(),
+  downloadUrl: z.string().nullable().optional(), // absent for archived/taken-down versions
+  trainedWords: z.array(z.string()).nullable().optional(),
+  files: z.array(ModelFileSchema).nullable().optional(),
+  stats: StatsSchema.nullable().optional(),
+  images: z.array(ImageSchema).nullable().optional(),
 });
 
 // Enums discovery
@@ -187,7 +187,7 @@ export const EnumsResponseSchema = z.object({
 // Current user
 export const CurrentUserSchema = z.object({
   id: z.number(),
-  username: z.string(),
+  username: z.string().nullable().optional(),
   tier: z.string().optional(),
   status: z.string().optional(),
   isMember: z.boolean().optional(),
@@ -197,7 +197,7 @@ export const CurrentUserSchema = z.object({
 // User lookup
 export const UserLookupItemSchema = z.object({
   id: z.number(),
-  username: z.string(),
+  username: z.string().nullable().optional(),
   avatarNsfw: z.union([z.string(), z.number()]).nullable().optional(), // docs say string, live API returns a number
 });
 
