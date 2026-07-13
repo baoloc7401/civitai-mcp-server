@@ -1,7 +1,7 @@
 {
   "name": "civitai-mcp-server",
-  "version": "1.0.0",
-  "description": "MCP server for interacting with the Civitai API - browse AI models, images, creators, and more",
+  "version": "1.1.0",
+  "description": "MCP server for interacting with the Civitai API - browse AI models, images, creators, and generate via the Orchestrator",
   "type": "module",
   "main": "dist/index.js",
   "scripts": {

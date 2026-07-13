@@ -189,7 +189,7 @@ export class CivitaiClient {
           method,
           headers: {
             'Content-Type': 'application/json',
-            'User-Agent': 'civitai-mcp-server/1.0.0',
+            'User-Agent': 'civitai-mcp-server/1.1.0',
             ...(this.apiKey && { 'Authorization': `Bearer ${this.apiKey}` })
           },
           ...(options.body !== undefined && { body: JSON.stringify(options.body) })

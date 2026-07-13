@@ -1,14 +1,34 @@
 ---
 name: add-civitai-tool
-description: Add a new MCP tool wrapping a Civitai REST API endpoint to civitai-mcp-server, end-to-end across the three layered source files. Use when the user wants to expose a new Civitai API endpoint as a tool, e.g. "add a tool for X", "wrap the /images endpoint", "add support for Civitai's Y API".
+description: Add a new MCP tool wrapping a Civitai REST API endpoint (site API or Orchestration API) to civitai-mcp-server, end-to-end across the layered source files. Use when the user wants to expose a new Civitai API endpoint as a tool, e.g. "add a tool for X", "wrap the /images endpoint", "add support for Civitai's Y API".
 ---
 
 # Add a new Civitai API tool
 
-This repo (`src/`) is three layered files — a new tool touches all three, in
-this order:
+This repo (`src/`) has two layered client stacks that share one `index.ts`:
 
-## 1. `src/types.ts` — response schema
+- **Site API** (`https://civitai.com/api/v1`, browsing/metadata):
+  `src/types.ts` + `src/civitai-client.ts`
+- **Orchestration API** (`https://orchestration.civitai.com`, paid
+  generation): `src/orchestration-types.ts` + `src/orchestration-client.ts`
+
+Pick the stack that matches the endpoint; the steps below are the same for
+both (schemas file → client file → `index.ts`). Orchestration-specific
+notes:
+
+- Every Orchestration endpoint requires auth — call `this.requireAuth()`
+  first in new client methods.
+- If the endpoint **spends Buzz**, the tool MUST follow the confirmSpend
+  gate in `.claude/rules/security.md`: handler runs `whatif: true` unless
+  `args.confirmSpend === true`, and the description carries the
+  "COSTS BUZZ … dry-run by default" wording (copy it from `generate_image`).
+- Generation-style steps should go through
+  `CivitaiOrchestrationClient.runStep('$type', input, opts)` (single-step
+  workflow via `POST /v2/consumer/workflows`) rather than the `/recipes/*`
+  endpoints — only the workflows endpoint returns whatif cost estimates and
+  a pollable workflow id.
+
+## 1. `src/types.ts` (or `src/orchestration-types.ts`) — response schema
 
 Add a Zod schema for the endpoint's response shape, plus any new enums it
 needs. Look at the actual Civitai API response (docs or a live call) before
@@ -18,9 +38,10 @@ always present, since this API is known to be inconsistent. Export the
 inferred TS type alongside the schema, matching the existing
 `ModelSchema` / `Model` pattern.
 
-## 2. `src/civitai-client.ts` — client method
+## 2. `src/civitai-client.ts` (or `src/orchestration-client.ts`) — client method
 
-Add a method on `CivitaiClient` following the existing pattern:
+Add a method on `CivitaiClient` / `CivitaiOrchestrationClient` following the
+existing pattern:
 
 ```ts
 async getThing(id: number): Promise<Thing> {

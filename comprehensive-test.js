@@ -1,16 +1,17 @@
 #!/usr/bin/env node
 
 import { CivitaiClient } from './dist/civitai-client.js';
+import { CivitaiOrchestrationClient } from './dist/orchestration-client.js';
 
-async function runTest(testName, testFn) {
+async function runTest(testName, testFn, timeoutMs = 5000) {
   try {
     console.log(`\n🧪 Testing ${testName}...`);
-    
+
     // Add timeout to prevent hanging
-    const timeoutPromise = new Promise((_, reject) => 
-      setTimeout(() => reject(new Error('Test timeout after 5 seconds')), 5000)
+    const timeoutPromise = new Promise((_, reject) =>
+      setTimeout(() => reject(new Error(`Test timeout after ${timeoutMs / 1000} seconds`)), timeoutMs)
     );
-    
+
     await Promise.race([testFn(), timeoutPromise]);
     console.log(`✅ ${testName} passed`);
   } catch (error) {
@@ -177,28 +178,67 @@ async function comprehensiveTest() {
     }
   })) passedTests++;
 
+  // Orchestration API tests (orchestration.civitai.com). These require a
+  // token, so they are skipped when CIVITAI_API_KEY is unset. Every
+  // generation call here uses whatif: true — a dry-run cost estimate that
+  // NEVER spends Buzz. Do not add tests that pass confirmSpend / omit whatif.
+  const orchApiKey = process.env.CIVITAI_API_KEY;
+  if (!orchApiKey) {
+    console.log('\n⏭  Skipping Orchestration API tests (CIVITAI_API_KEY not set)');
+  } else {
+    const orchClient = new CivitaiOrchestrationClient(orchApiKey);
+
+    // Test 11: Orchestrator resource lookup by AIR
+    totalTests++;
+    if (await runTest('Orchestrator Resource by AIR', async () => {
+      const resource = await orchClient.getResource('urn:air:sdxl:checkpoint:civitai:827184@2514310');
+      console.log(`   Resource: ${resource.resourceName} - ${resource.versionName}`);
+      console.log(`   Can generate: ${resource.canGenerate}`);
+      if (!resource.air) throw new Error('No AIR returned');
+    }, 15000)) passedTests++;
+    await delay(500);
+
+    // Test 12: textToImage dry-run (whatif — no Buzz spent)
+    totalTests++;
+    if (await runTest('Text-to-Image Dry Run (whatif)', async () => {
+      const wf = await orchClient.textToImage({ prompt: 'a red apple on a table' }, { whatif: true });
+      console.log(`   Estimated cost: ${wf.cost?.total ?? wf.cost?.base ?? 'unknown'} Buzz`);
+      console.log(`   Steps: ${(wf.steps || []).map(s => s.$type).join(', ')}`);
+      if (wf.cost?.total === undefined && wf.cost?.base === undefined) {
+        throw new Error('No cost estimate returned');
+      }
+    }, 15000)) passedTests++;
+    await delay(500);
+
+    // Test 13: promptEnhancement dry-run (whatif — no Buzz spent)
+    totalTests++;
+    if (await runTest('Prompt Enhancement Dry Run (whatif)', async () => {
+      const wf = await orchClient.enhancePrompt({ ecosystem: 'sdxl', prompt: 'cat' }, { whatif: true });
+      console.log(`   Estimated cost: ${wf.cost?.total ?? wf.cost?.base ?? 'unknown'} Buzz`);
+      if ((wf.steps || []).length === 0) throw new Error('No steps returned');
+    }, 15000)) passedTests++;
+    await delay(500);
+
+    // Test 14: query workflows
+    totalTests++;
+    if (await runTest('Query Workflows', async () => {
+      const page = await orchClient.queryWorkflows({ take: 2 });
+      console.log(`   Found ${(page.items || []).length} workflow(s)`);
+      if (!Array.isArray(page.items)) throw new Error('No items array in response');
+    }, 15000)) passedTests++;
+  }
+
   // Final Results
   console.log('\n' + '='.repeat(60));
   console.log(`🏁 Test Results: ${passedTests}/${totalTests} tests passed`);
-  
+
   if (passedTests === totalTests) {
     console.log('🎉 All tests passed! The Civitai MCP server is working perfectly!');
-    console.log('\n📋 Available MCP Tools:');
-    console.log('  • search_models - Search models with filters');
-    console.log('  • get_model - Get detailed model information');
-    console.log('  • get_model_version - Get version details');
-    console.log('  • get_model_version_by_hash - Find model by hash');
-    console.log('  • browse_images - Browse AI-generated images');
-    console.log('  • get_creators - Browse model creators');
-    console.log('  • get_tags - Browse available tags');
-    console.log('  • get_popular_models - Get most downloaded models');
-    console.log('  • get_latest_models - Get newest models');
-    console.log('  • get_top_rated_models - Get highest rated models');
-    console.log('  • search_models_by_tag - Search by specific tag');
-    console.log('  • search_models_by_creator - Search by creator');
-    console.log('  • get_models_by_type - Filter by model type');
-    console.log('  • get_download_url - Get download URLs');
-    
+    console.log('\n📋 The server exposes 34 MCP tools: model/image/creator/tag browsing,');
+    console.log('   vault management, hash lookups, and Orchestrator generation tools');
+    console.log('   (generate_image, generate_video, upscale_image, enhance_prompt, ...).');
+    console.log('   Run tools/list against dist/index.js for the authoritative list.');
+
     console.log('\n🔧 To use with Claude Desktop, add this to your MCP config:');
     console.log(JSON.stringify({
       "mcpServers": {

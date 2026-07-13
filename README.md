@@ -6,7 +6,7 @@ A Model Context Protocol (MCP) server that provides AI assistants with comprehen
 [![Node.js Version](https://img.shields.io/badge/node-%3E%3D18.0.0-brightgreen.svg)](https://nodejs.org/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-007ACC?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 
-> 🍴 **This is a fork** of [Cicatriiz/civitai-mcp-server](https://github.com/Cicatriiz/civitai-mcp-server) that got a little out of hand — it now ships a Vault API, enum discovery, user lookup, generation-permission checks, and hash-based lookups the original doesn't have, plus a round of schema fixes to keep up with Civitai's API drift. Same spirit, more surface area.
+> 🍴 **This is a fork** of [Cicatriiz/civitai-mcp-server](https://github.com/Cicatriiz/civitai-mcp-server) that got a little out of hand — it now ships a Vault API, enum discovery, user lookup, generation-permission checks, hash-based lookups, and full Orchestration API generation tools (image/video/upscale/prompt-enhancement, Buzz-safe by default) the original doesn't have, plus a round of schema fixes to keep up with Civitai's API drift. Same spirit, more surface area.
 
 ## Features
 
@@ -32,6 +32,14 @@ A Model Context Protocol (MCP) server that provides AI assistants with comprehen
 - **Version History**: Track model updates and improvements
 - **Download URLs**: Direct access to model downloads with authentication support
 - **Content Safety**: Access scan results for pickle and virus safety
+
+### 🎨 **AI Generation (Orchestration API)**
+- **Image Generation**: Text-to-image with any Civitai checkpoint/LoRA, or hosted engines (OpenAI, Flux, Gemini, ...)
+- **Video Generation**: Text-to-video and image-to-video across 17 engines (Kling, Veo 3, Sora, WAN, ...)
+- **Image Upscaling**: 2x-8x upscaling
+- **Prompt Enhancement**: LLM-assisted prompt rewriting per ecosystem
+- **Buzz-Safe by Default**: Every paid tool runs as a free dry-run returning a cost estimate; nothing is charged until you explicitly confirm with `confirmSpend: true`
+- **Workflow Management**: Submit raw workflows, poll status, list history, cancel jobs
 
 ## Installation
 
@@ -167,6 +175,35 @@ Explore recent AI-generated images:
 | `get_model_versions_by_hash` | Full model version details for up to 100 file hashes | `hashes` |
 | `get_model_version_ids_by_hash` | Resolve up to 10,000 file hashes to model version IDs | `hashes` |
 | `get_model_version_mini` | Lightweight model version summary for download/generation checks | `modelVersionId`, `epoch` |
+| `generate_image` | Generate images (Civitai checkpoints or hosted engines) — *costs Buzz, dry-run by default* | `prompt`, `model`, `engine`, `confirmSpend` |
+| `generate_video` | Generate videos across 17 engines — *costs Buzz, dry-run by default* | `engine`, `prompt`, `confirmSpend` |
+| `upscale_image` | Upscale an image 2x-8x — *costs Buzz, dry-run by default* | `image`, `numberOfRepeats`, `confirmSpend` |
+| `enhance_prompt` | LLM prompt rewriting for a target ecosystem — *costs Buzz, dry-run by default* | `ecosystem`, `prompt`, `confirmSpend` |
+| `submit_workflow` | Submit a raw Orchestrator workflow (any step type) — *costs Buzz, dry-run by default* | `steps`, `confirmSpend` |
+| `get_workflow` | Poll a workflow's status, cost, and output URLs | `workflowId`, `wait` |
+| `query_workflows` | List the account's recent workflows | `take`, `tags`, `excludeFailed` |
+| `cancel_workflow` | Cancel a running workflow (may refund unstarted work) | `workflowId` |
+| `get_orchestrator_resource` | Look up a resource by AIR (canGenerate, downloads, hashes) | `air` |
+
+All Orchestration tools require `CIVITAI_API_KEY`.
+
+### Two-step generation (Buzz safety)
+
+Generation tools never spend Buzz on the first call — they return a cost estimate:
+
+```
+1. Tool: generate_image
+   Prompt: "a red apple on a table"
+   → "Dry run — no Buzz was spent. Estimated cost: ~1 Buzz total.
+      To execute for real, call generate_image again with the SAME
+      arguments plus confirmSpend: true."
+
+2. Tool: generate_image
+   Prompt: "a red apple on a table"
+   ConfirmSpend: true
+   → "Workflow 198743-…  Status: succeeded  Cost: ~1 Buzz total
+      Outputs (1): https://orchestration-new.civitai.com/…"
+```
 
 ## API Reference
 
@@ -193,16 +230,28 @@ Explore recent AI-generated images:
 
 ## API Coverage
 
-This MCP server implements all major Civitai API v1 endpoints:
+**Site API (`civitai.com/api/v1`):**
 
 - ✅ `/api/v1/models` - List and search models
 - ✅ `/api/v1/models/:id` - Get specific model
-- ✅ `/api/v1/model-versions/:id` - Get model version
+- ✅ `/api/v1/model-versions/:id` - Get model version (+ `/mini/:id`, bulk `/by-hash`, `/by-hash/ids`)
 - ✅ `/api/v1/model-versions/by-hash/:hash` - Get version by hash
 - ✅ `/api/v1/images` - Browse images
 - ✅ `/api/v1/creators` - List creators
 - ✅ `/api/v1/tags` - List tags
+- ✅ `/api/v1/enums` - Enum discovery
+- ✅ `/api/v1/me` + `/api/v1/users` - Account and user lookup
+- ✅ `/api/v1/permissions/check` - Generation permission checks
+- ✅ `/api/v1/vault/*` - Vault management
 - ✅ Download URLs with authentication support
+
+**Orchestration API (`orchestration.civitai.com`):**
+
+- ✅ `POST /v2/consumer/workflows` - Submit workflows (with `whatif` dry-run cost estimates)
+- ✅ `GET /v2/consumer/workflows` + `/{id}` - Query and poll workflows
+- ✅ `DELETE /v2/consumer/workflows/{id}` - Cancel workflows
+- ✅ Generation steps: `textToImage`, `imageGen`, `videoGen`, `imageUpscaler`, `promptEnhancement`
+- ✅ `GET /v2/resources/{air}` - Resource lookup by AIR
 
 ## Model Types Supported
 
@@ -236,12 +285,14 @@ The server includes comprehensive error handling for:
 ```
 civitai-mcp-server/
 ├── src/
-│   ├── index.ts          # Main server implementation
-│   ├── civitai-client.ts # Civitai API client
-│   └── types.ts          # TypeScript type definitions
-├── dist/                 # Compiled JavaScript output
-├── tests/                # Test files
-└── docs/                 # Additional documentation
+│   ├── index.ts                # Main server implementation (all 34 tools)
+│   ├── civitai-client.ts       # Site API client (civitai.com/api/v1)
+│   ├── types.ts                # Site API Zod schemas / types
+│   ├── orchestration-client.ts # Orchestration API client (orchestration.civitai.com)
+│   └── orchestration-types.ts  # Orchestration API Zod schemas / types
+├── dist/                       # Compiled JavaScript output
+├── tests/                      # Test files
+└── docs/                       # Additional documentation
 ```
 
 ### Building from Source

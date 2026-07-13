@@ -8,17 +8,20 @@ import {
   Tool,
 } from '@modelcontextprotocol/sdk/types.js';
 import { CivitaiClient } from './civitai-client.js';
+import { CivitaiOrchestrationClient } from './orchestration-client.js';
+import { Workflow, WorkflowCost, OrchestrationBlob } from './orchestration-types.js';
 import { z } from 'zod';
 
 class CivitaiMCPServer {
   private server: Server;
   private client: CivitaiClient;
+  private orchestrationClient: CivitaiOrchestrationClient;
 
   constructor() {
     this.server = new Server(
       {
         name: 'civitai-mcp-server',
-        version: '1.0.0',
+        version: '1.1.0',
       },
       {
         capabilities: {
@@ -27,9 +30,12 @@ class CivitaiMCPServer {
       }
     );
 
-    // Initialize client with API key from environment variable
+    // Initialize clients with API key from environment variable. The same
+    // token serves both the site API (civitai.com/api/v1) and the
+    // Orchestration API (orchestration.civitai.com).
     const apiKey = process.env.CIVITAI_API_KEY;
     this.client = new CivitaiClient(apiKey);
+    this.orchestrationClient = new CivitaiOrchestrationClient(apiKey);
 
     this.setupToolHandlers();
   }
@@ -96,6 +102,24 @@ class CivitaiMCPServer {
             return await this.getModelVersionIdsByHash(args);
           case 'get_model_version_mini':
             return await this.getModelVersionMini(args);
+          case 'submit_workflow':
+            return await this.submitWorkflow(args);
+          case 'get_workflow':
+            return await this.getWorkflow(args);
+          case 'query_workflows':
+            return await this.queryWorkflows(args);
+          case 'cancel_workflow':
+            return await this.cancelWorkflow(args);
+          case 'generate_image':
+            return await this.generateImage(args);
+          case 'generate_video':
+            return await this.generateVideo(args);
+          case 'upscale_image':
+            return await this.upscaleImage(args);
+          case 'enhance_prompt':
+            return await this.enhancePrompt(args);
+          case 'get_orchestrator_resource':
+            return await this.getOrchestratorResource(args);
           default:
             throw new Error(`Unknown tool: ${name}`);
         }
@@ -474,6 +498,176 @@ class CivitaiMCPServer {
             epoch: { type: 'number', description: 'For private training-result versions, request a specific epoch\'s file' },
           },
           required: ['modelVersionId'],
+        },
+      },
+      // Orchestration API tools (orchestration.civitai.com) — paid generation.
+      {
+        name: 'generate_image',
+        description: 'Generate images on Civitai\'s generation platform. COSTS BUZZ (Civitai\'s paid credit). By default runs as a dry-run returning only a cost estimate — re-invoke with confirmSpend: true to actually spend Buzz and execute. Omit engine to generate with a Civitai checkpoint/LoRA (textToImage); set engine to use a hosted engine like openai or flux2 instead. Requires CIVITAI_API_KEY.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            prompt: { type: 'string', description: 'The text prompt to generate from' },
+            negativePrompt: { type: 'string', description: 'Negative prompt (things to avoid)' },
+            model: { type: 'string', description: 'AIR of the checkpoint to use, e.g. urn:air:sdxl:checkpoint:civitai:827184@2514310 (default: an SD 1.5 checkpoint). Only used when engine is omitted.' },
+            engine: {
+              type: 'string',
+              enum: ['openai', 'flux1-kontext', 'flux2', 'google', 'wan', 'gemini', 'sdcpp', 'comfy', 'seedream', 'grok', 'fal'],
+              description: 'Hosted generation engine. Omit to generate with a Civitai checkpoint via textToImage.'
+            },
+            engineOptions: { type: 'object', description: 'Engine-specific options (only used with engine), passed through verbatim — e.g. size, quality, model variant. A dry-run surfaces validation errors for free.' },
+            width: { type: 'number', description: 'Image width in pixels (64-4084, default 512)', minimum: 64, maximum: 4084 },
+            height: { type: 'number', description: 'Image height in pixels (64-4084, default 512)', minimum: 64, maximum: 4084 },
+            steps: { type: 'number', description: 'Sampling steps (1-150, default 30)', minimum: 1, maximum: 150 },
+            cfgScale: { type: 'number', description: 'CFG scale (1-30, default 7.5)', minimum: 1, maximum: 30 },
+            seed: { type: 'number', description: 'Seed (0-4294967295, random if omitted)', minimum: 0, maximum: 4294967295 },
+            scheduler: {
+              type: 'string',
+              enum: ['eulerA', 'euler', 'lms', 'heun', 'dpM2', 'dpM2A', 'dpM2SA', 'dpM2M', 'dpmsde', 'dpmFast', 'dpmAdaptive', 'lmsKarras', 'dpM2Karras', 'dpM2AKarras', 'dpM2SAKarras', 'dpM2MKarras', 'dpmsdeKarras', 'ddim', 'plms', 'uniPC', 'undefined', 'lcm', 'ddpm', 'deis', 'dpM3MSDE'],
+              description: 'Sampling scheduler'
+            },
+            clipSkip: { type: 'number', description: 'CLIP skip value (default 2)' },
+            quantity: { type: 'number', description: 'Number of batches to run (1-100, default 1)', minimum: 1, maximum: 100 },
+            batchSize: { type: 'number', description: 'Images per batch (1-100, default 1)', minimum: 1, maximum: 100 },
+            sourceImage: { type: 'string', description: 'Source image (URL, DataURL, or base64) to trigger img2img' },
+            sourceImageDenoiseStrength: { type: 'number', description: 'img2img denoise strength 0.0-1.0; lower preserves more of the source (default 0.8)' },
+            additionalNetworks: { type: 'object', description: 'LoRAs/embeddings keyed by AIR, e.g. {"urn:air:sdxl:lora:civitai:123@456": {"strength": 0.8}}' },
+            outputFormat: { type: 'string', description: 'Output image format' },
+            confirmSpend: { type: 'boolean', description: 'Set true to actually spend Buzz and generate. Omitted or false = dry-run cost estimate only.' },
+          },
+          required: ['prompt'],
+        },
+      },
+      {
+        name: 'generate_video',
+        description: 'Generate videos (text-to-video or image-to-video) on Civitai\'s generation platform. COSTS BUZZ (Civitai\'s paid credit). By default runs as a dry-run returning only a cost estimate — re-invoke with confirmSpend: true to actually spend Buzz and execute. Video jobs take minutes; results are retrieved via get_workflow. Requires CIVITAI_API_KEY.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            engine: {
+              type: 'string',
+              enum: ['kling', 'kling-v3', 'haiper', 'veo3', 'wan', 'minimax', 'vidu', 'vidu-q3', 'sora', 'grok', 'lightricks', 'ltx2', 'ltx2.3', 'hunyuan', 'mochi', 'seedance', 'happyHorse'],
+              description: 'Video generation engine'
+            },
+            prompt: { type: 'string', description: 'The text prompt to generate from' },
+            engineOptions: { type: 'object', description: 'Engine-specific options passed through verbatim — e.g. duration, aspectRatio, resolution, sourceImage, seed. A dry-run surfaces validation errors for free.' },
+            confirmSpend: { type: 'boolean', description: 'Set true to actually spend Buzz and generate. Omitted or false = dry-run cost estimate only.' },
+          },
+          required: ['engine', 'prompt'],
+        },
+      },
+      {
+        name: 'upscale_image',
+        description: 'Upscale an image 2x per repeat (up to 8x with 3 repeats). COSTS BUZZ (Civitai\'s paid credit). By default runs as a dry-run returning only a cost estimate — re-invoke with confirmSpend: true to actually spend Buzz and execute. Requires CIVITAI_API_KEY.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            image: { type: 'string', description: 'The image to upscale: URL, DataURL, or base64 string' },
+            model: { type: 'string', description: 'Upscaler model to use, in AIR format' },
+            numberOfRepeats: { type: 'number', description: 'Upscale passes (1-3); each doubles the resolution', minimum: 1, maximum: 3 },
+            confirmSpend: { type: 'boolean', description: 'Set true to actually spend Buzz and upscale. Omitted or false = dry-run cost estimate only.' },
+          },
+          required: ['image'],
+        },
+      },
+      {
+        name: 'enhance_prompt',
+        description: 'Analyze and rewrite a generation prompt for a target ecosystem, returning the improved prompt plus issues and recommendations. COSTS BUZZ (Civitai\'s paid credit). By default runs as a dry-run returning only a cost estimate — re-invoke with confirmSpend: true to actually spend Buzz and execute. Requires CIVITAI_API_KEY.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            ecosystem: { type: 'string', enum: ['sd1', 'sdxl', 'flux', 'ltx2'], description: 'Target model ecosystem the prompt should be optimized for' },
+            prompt: { type: 'string', description: 'The prompt to analyze and enhance' },
+            negativePrompt: { type: 'string', description: 'Optional negative prompt to analyze and enhance' },
+            temperature: { type: 'number', description: 'LLM creativity 0.0-1.0 (default 0.7)', minimum: 0, maximum: 1 },
+            instruction: { type: 'string', description: 'Optional guidance, e.g. "expand to 77 tokens" or "keep it under 20 words"' },
+            confirmSpend: { type: 'boolean', description: 'Set true to actually spend Buzz and enhance. Omitted or false = dry-run cost estimate only.' },
+          },
+          required: ['ecosystem', 'prompt'],
+        },
+      },
+      {
+        name: 'submit_workflow',
+        description: 'Submit a raw workflow (array of steps) to the Civitai Orchestrator — the escape hatch for job types without a dedicated tool (training, comfy, TTS, transcription, ...). COSTS BUZZ (Civitai\'s paid credit). By default runs as a dry-run returning only a cost estimate — re-invoke with confirmSpend: true to actually spend Buzz and execute. Requires CIVITAI_API_KEY.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            steps: {
+              type: 'array',
+              description: 'Workflow steps. Each step is {"$type": "<stepType>", "input": {...}} — e.g. $type "textToImage", "videoGen", "imageResourceTraining", "comfy", "textToSpeech".',
+              items: {
+                type: 'object',
+                properties: {
+                  $type: { type: 'string', description: 'Step type discriminator' },
+                  input: { type: 'object', description: 'Step input, shape depends on $type' },
+                  name: { type: 'string', description: 'Optional step name so steps can reference one another' },
+                  priority: { type: 'string', enum: ['high', 'normal', 'low'] },
+                  timeout: { type: 'string', description: 'Max time to wait for the step (timespan format)' },
+                  retries: { type: 'number', description: 'Max retries for the step' },
+                  metadata: { type: 'object' },
+                },
+                required: ['$type', 'input'],
+              },
+              minItems: 1,
+            },
+            tags: { type: 'array', items: { type: 'string' }, maxItems: 10, description: 'Up to 10 tags; indexed and searchable via query_workflows' },
+            metadata: { type: 'object', description: 'Freeform metadata stored with the workflow' },
+            externalId: { type: 'string', description: 'Idempotency key (1-128 chars, [A-Za-z0-9_-]); resubmitting the same key returns the existing workflow instead of charging again' },
+            wait: { type: 'number', description: 'Seconds to block waiting for completion (0-60, only applies with confirmSpend)', minimum: 0, maximum: 60 },
+            confirmSpend: { type: 'boolean', description: 'Set true to actually spend Buzz and execute. Omitted or false = dry-run cost estimate only.' },
+          },
+          required: ['steps'],
+        },
+      },
+      {
+        name: 'get_workflow',
+        description: 'Get the status, cost, and outputs (blob URLs) of an Orchestrator workflow by ID. Free read. Use this to poll workflows that were still processing when submitted. Requires CIVITAI_API_KEY.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            workflowId: { type: 'string', description: 'The workflow ID, e.g. wf_01HXYZ...' },
+            wait: { type: 'number', description: 'Seconds to block waiting for completion (0-60)', minimum: 0, maximum: 60 },
+          },
+          required: ['workflowId'],
+        },
+      },
+      {
+        name: 'query_workflows',
+        description: 'List the authenticated account\'s recent Orchestrator workflows, newest first. Free read. Requires CIVITAI_API_KEY.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            take: { type: 'number', description: 'How many workflows to return (1-100, default 10)', minimum: 1, maximum: 100 },
+            cursor: { type: 'string', description: 'Continuation cursor from a previous query' },
+            tags: { type: 'array', items: { type: 'string' }, description: 'Only workflows with these tags' },
+            query: { type: 'string', description: 'Match workflows through their metadata' },
+            ascending: { type: 'boolean', description: 'Oldest first instead of newest first' },
+            fromDate: { type: 'string', description: 'ISO date-time lower bound on creation' },
+            toDate: { type: 'string', description: 'ISO date-time upper bound on creation' },
+            excludeFailed: { type: 'boolean', description: 'Exclude Failed, Expired, and Canceled workflows' },
+          },
+        },
+      },
+      {
+        name: 'cancel_workflow',
+        description: 'Cancel a running Orchestrator workflow. May trigger a Buzz refund if the requested work has not started yet. Requires CIVITAI_API_KEY.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            workflowId: { type: 'string', description: 'The workflow ID to cancel' },
+          },
+          required: ['workflowId'],
+        },
+      },
+      {
+        name: 'get_orchestrator_resource',
+        description: 'Look up a resource on the Orchestrator by its AIR identifier — returns generation availability (canGenerate), download URLs, hashes, and early-access gating. Free read. Requires CIVITAI_API_KEY.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            air: { type: 'string', description: 'AIR identifier, e.g. urn:air:sdxl:checkpoint:civitai:827184@2514310' },
+          },
+          required: ['air'],
         },
       },
     ];
@@ -1032,6 +1226,281 @@ class CivitaiMCPServer {
             `**File:** ${version.fileName || 'Unknown'} (${version.format || 'Unknown'})\\n` +
             `**Download URLs:** ${(version.downloadUrls || []).join(', ') || 'None'}\\n` +
             `**SHA256:** ${version.hashes?.SHA256 || 'Unknown'}`,
+        },
+      ],
+    };
+  }
+
+  // Orchestration API formatters
+
+  private formatBuzzCost(cost: WorkflowCost | null | undefined): string {
+    if (!cost || (cost.total === undefined && cost.base === undefined)) {
+      return 'cost estimate unavailable';
+    }
+    const total = cost.total ?? cost.base;
+    const parts: string[] = [];
+    if (cost.base !== undefined && cost.base !== total) parts.push(`base ${cost.base}`);
+    // tips is a number in some responses, an object breakdown ({civitai, creators}) in others
+    const tipsTotal = typeof cost.tips === 'number'
+      ? cost.tips
+      : cost.tips && typeof cost.tips === 'object'
+        ? Object.values(cost.tips as Record<string, number>).reduce((a, b) => a + (typeof b === 'number' ? b : 0), 0)
+        : 0;
+    if (tipsTotal > 0) parts.push(`tips ${tipsTotal}`);
+    return `~${total} Buzz total${parts.length > 0 ? ` (${parts.join(', ')})` : ''}`;
+  }
+
+  // Step outputs are polymorphic (verified live): textToImage yields
+  // { images: Blob[] }, videoGen { video: Blob }, imageUpscaler { blob: Blob }.
+  private collectOutputBlobs(wf: Workflow): OrchestrationBlob[] {
+    const blobs: OrchestrationBlob[] = [];
+    const harvest = (output: Record<string, any> | null | undefined) => {
+      if (!output) return;
+      for (const key of ['images', 'blobs', 'blob', 'video', 'videos', 'audio']) {
+        const value = output[key];
+        if (Array.isArray(value)) {
+          blobs.push(...value.filter((b: any) => b && typeof b === 'object'));
+        } else if (value && typeof value === 'object') {
+          blobs.push(value);
+        }
+      }
+    };
+    for (const step of wf.steps || []) {
+      harvest(step.output);
+    }
+    harvest(wf as Record<string, any>); // bare recipe outputs (no workflow envelope)
+    return blobs;
+  }
+
+  private formatWorkflowResult(wf: Workflow, ctx: { dryRun: boolean; toolName: string }) {
+    if (ctx.dryRun) {
+      const insufficientBuzz = (wf.transactions as any)?.insufficientBuzz === true;
+      return {
+        content: [
+          {
+            type: 'text',
+            text: `# Dry run — no Buzz was spent\\n\\n` +
+              `**Estimated cost:** ${this.formatBuzzCost(wf.cost)}\\n` +
+              `**Validation:** request accepted by the Orchestrator\\n` +
+              (insufficientBuzz
+                ? `\\n⚠️ **Insufficient Buzz:** the account cannot currently afford this — executing with confirmSpend would fail or be rejected.\\n`
+                : '') +
+              `\\nTo execute for real, call ${ctx.toolName} again with the SAME arguments plus confirmSpend: true.`,
+          },
+        ],
+      };
+    }
+
+    const status = wf.status || 'unknown';
+    const blobs = this.collectOutputBlobs(wf);
+    const header = `# Workflow ${wf.id || '(no id returned)'}\\n\\n` +
+      `**Status:** ${status}\\n` +
+      (wf.cost ? `**Cost:** ${this.formatBuzzCost(wf.cost)}\\n` : '');
+
+    if (status === 'succeeded' || blobs.length > 0) {
+      return {
+        content: [
+          {
+            type: 'text',
+            text: header +
+              `\\n**Outputs (${blobs.length}):**\\n` +
+              (blobs.length === 0
+                ? 'No output blobs found on the workflow.'
+                : blobs.map(b =>
+                    `- ${b.url || 'not yet available'}` +
+                    (b.width && b.height ? ` (${b.width}x${b.height})` : '') +
+                    (b.urlExpiresAt ? ` — URL expires ${new Date(b.urlExpiresAt).toLocaleString()}` : '') +
+                    (b.blockedReason ? ` [BLOCKED: ${b.blockedReason}]` : '')
+                  ).join('\\n')),
+          },
+        ],
+      };
+    }
+
+    if (status === 'failed' || status === 'expired' || status === 'canceled') {
+      return {
+        content: [
+          {
+            type: 'text',
+            text: header +
+              `\\n**Step statuses:**\\n` +
+              (wf.steps || []).map(s => `- ${s.name || s.$type || 'step'}: ${s.status || 'unknown'}`).join('\\n') +
+              `\\n\\nThe workflow did not complete. Buzz for unstarted work may be refunded automatically.`,
+          },
+        ],
+      };
+    }
+
+    // unassigned / preparing / scheduled / processing
+    return {
+      content: [
+        {
+          type: 'text',
+          text: header +
+            `\\nStill running. Call get_workflow with workflowId "${wf.id}" (optionally wait: 60) to retrieve results.`,
+        },
+      ],
+    };
+  }
+
+  // Orchestration API handlers
+
+  private async submitWorkflow(args: any) {
+    const { confirmSpend, wait, ...body } = args;
+    const dryRun = confirmSpend !== true;
+    const result = await this.orchestrationClient.submitWorkflow(body, {
+      whatif: dryRun,
+      wait: dryRun ? undefined : (wait ?? 60),
+    });
+    return this.formatWorkflowResult(result, { dryRun, toolName: 'submit_workflow' });
+  }
+
+  private async getWorkflow(args: any) {
+    const { workflowId, wait } = args;
+    const result = await this.orchestrationClient.getWorkflow(workflowId, wait);
+    return this.formatWorkflowResult(result, { dryRun: false, toolName: 'get_workflow' });
+  }
+
+  private async queryWorkflows(args: any) {
+    const page = await this.orchestrationClient.queryWorkflows({
+      take: 10,
+      ...args,
+    });
+    const items = page.items || [];
+    const cursor = page.nextCursor ?? page.next;
+
+    return {
+      content: [
+        {
+          type: 'text',
+          text: items.length === 0
+            ? 'No workflows found.'
+            : `Found ${items.length} workflow(s):\\n\\n${items.map(wf =>
+                `**${wf.id || 'unknown'}** — ${wf.status || 'unknown'}\\n` +
+                `Created: ${wf.createdAt ? new Date(wf.createdAt).toLocaleString() : 'Unknown'}\\n` +
+                `Steps: ${(wf.steps || []).map(s => s.$type || 'step').join(', ') || 'none'}\\n` +
+                (wf.cost ? `Cost: ${this.formatBuzzCost(wf.cost)}\\n` : '') +
+                ((wf.tags || []).length > 0 ? `Tags: ${(wf.tags || []).join(', ')}\\n` : '')
+              ).join('\\n---\\n')}` +
+              (cursor ? `\\n\\nMore available — pass cursor: "${cursor}" to continue.` : ''),
+        },
+      ],
+    };
+  }
+
+  private async cancelWorkflow(args: any) {
+    const { workflowId } = args;
+    await this.orchestrationClient.cancelWorkflow(workflowId);
+    return {
+      content: [
+        {
+          type: 'text',
+          text: `Workflow ${workflowId} canceled. Buzz for work that had not started may be refunded automatically.`,
+        },
+      ],
+    };
+  }
+
+  private async generateImage(args: any) {
+    const { confirmSpend, engine, engineOptions, sourceImageDenoiseStrength, ...input } = args;
+    const dryRun = confirmSpend !== true;
+    const opts = { whatif: dryRun, wait: dryRun ? undefined : 60 };
+
+    const result = engine
+      ? await this.orchestrationClient.imageGen({ engine, prompt: input.prompt, ...engineOptions }, opts)
+      : await this.orchestrationClient.textToImage(
+          {
+            ...input,
+            // The API's own field name carries this typo; the tool exposes the
+            // correct spelling and maps it here.
+            ...(sourceImageDenoiseStrength !== undefined && { sourceImageDenoiseStrenght: sourceImageDenoiseStrength }),
+          },
+          opts
+        );
+
+    return this.formatWorkflowResult(result, { dryRun, toolName: 'generate_image' });
+  }
+
+  private async generateVideo(args: any) {
+    const { confirmSpend, engine, prompt, engineOptions } = args;
+    const dryRun = confirmSpend !== true;
+    const result = await this.orchestrationClient.videoGen(
+      { engine, prompt, ...engineOptions },
+      // Video jobs take minutes; don't burn the whole wait budget inline.
+      { whatif: dryRun, wait: dryRun ? undefined : 10 }
+    );
+    return this.formatWorkflowResult(result, { dryRun, toolName: 'generate_video' });
+  }
+
+  private async upscaleImage(args: any) {
+    const { confirmSpend, ...input } = args;
+    const dryRun = confirmSpend !== true;
+    const result = await this.orchestrationClient.upscaleImage(input as any, {
+      whatif: dryRun,
+      wait: dryRun ? undefined : 60,
+    });
+    return this.formatWorkflowResult(result, { dryRun, toolName: 'upscale_image' });
+  }
+
+  private async enhancePrompt(args: any) {
+    const { confirmSpend, ...input } = args;
+    const dryRun = confirmSpend !== true;
+    const result = await this.orchestrationClient.enhancePrompt(input as any, {
+      whatif: dryRun,
+      wait: dryRun ? undefined : 60,
+    });
+
+    if (dryRun) {
+      return this.formatWorkflowResult(result, { dryRun, toolName: 'enhance_prompt' });
+    }
+
+    // The enhancement lives in the step output (or at the top level when the
+    // recipe returns a bare output instead of a workflow envelope).
+    const output = (result.steps || []).map(s => s.output).find(o => o && o.enhancedPrompt)
+      || ((result as Record<string, any>).enhancedPrompt ? (result as Record<string, any>) : undefined);
+
+    if (!output) {
+      return this.formatWorkflowResult(result, { dryRun, toolName: 'enhance_prompt' });
+    }
+
+    return {
+      content: [
+        {
+          type: 'text',
+          text: `# Enhanced Prompt\\n\\n` +
+            `${output.enhancedPrompt}\\n\\n` +
+            (output.enhancedNegativePrompt ? `**Enhanced negative prompt:** ${output.enhancedNegativePrompt}\\n\\n` : '') +
+            ((output.issues || []).length > 0
+              ? `**Issues with the original:**\\n${(output.issues || []).map((i: any) =>
+                  `- ${typeof i === 'string' ? i : i.description || i.message || JSON.stringify(i)}`
+                ).join('\\n')}\\n\\n`
+              : '') +
+            ((output.recommendations || []).length > 0
+              ? `**Recommendations:**\\n${(output.recommendations || []).map((r: string) => `- ${r}`).join('\\n')}`
+              : ''),
+        },
+      ],
+    };
+  }
+
+  private async getOrchestratorResource(args: any) {
+    const { air } = args;
+    const resource = await this.orchestrationClient.getResource(air);
+
+    return {
+      content: [
+        {
+          type: 'text',
+          text: `# ${resource.resourceName || 'Unknown'} - ${resource.versionName || 'Unknown'}\\n\\n` +
+            `**AIR:** ${resource.air || air}\\n` +
+            `**Can Generate:** ${resource.canGenerate ? 'Yes' : 'No'}\\n` +
+            `**Gated (early access/private):** ${resource.checkPermission ? 'Yes' : 'No'}\\n` +
+            (resource.earlyAccessEndsAt ? `**Early Access Ends:** ${new Date(resource.earlyAccessEndsAt).toLocaleString()}\\n` : '') +
+            `**Size:** ${resource.size ? `${(resource.size / 1024 / 1024).toFixed(1)} MB` : 'Unknown'}\\n` +
+            `**Format:** ${resource.fileFormat || 'Unknown'}\\n` +
+            `**Mature content restricted:** ${resource.hasMatureContentRestriction ? 'Yes' : 'No'}\\n` +
+            `**Download URLs:** ${(resource.downloadUrls || []).join(', ') || 'None'}\\n` +
+            `**SHA256:** ${resource.hashes?.SHA256 || resource.hashes?.sha256 || 'Unknown'}`,
         },
       ],
     };
