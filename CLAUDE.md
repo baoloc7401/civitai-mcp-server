@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project
 
-MCP (Model Context Protocol) server exposing the Civitai REST API (`https://civitai.com/api/v1`) as 14 tools over stdio transport. TypeScript, ES modules (`"type": "module"`), Node 18+.
+MCP (Model Context Protocol) server exposing the Civitai REST API (`https://civitai.com/api/v1`) as 25 tools over stdio transport. TypeScript, ES modules (`"type": "module"`), Node 18+.
 
 ## Commands
 

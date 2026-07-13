@@ -6,6 +6,8 @@ A Model Context Protocol (MCP) server that provides AI assistants with comprehen
 [![Node.js Version](https://img.shields.io/badge/node-%3E%3D18.0.0-brightgreen.svg)](https://nodejs.org/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-007ACC?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 
+> 🍴 **This is a fork** of [Cicatriiz/civitai-mcp-server](https://github.com/Cicatriiz/civitai-mcp-server) that got a little out of hand — it now ships a Vault API, enum discovery, user lookup, generation-permission checks, and hash-based lookups the original doesn't have, plus a round of schema fixes to keep up with Civitai's API drift. Same spirit, more surface area.
+
 ## Features
 
 ### 🔍 **Model Discovery**
@@ -42,7 +44,7 @@ A Model Context Protocol (MCP) server that provides AI assistants with comprehen
 
 1. **Clone the repository:**
 ```bash
-git clone https://github.com/Cicatriiz/civitai-mcp-server.git
+git clone https://github.com/baoloc7401/civitai-mcp-server.git
 cd civitai-mcp-server
 ```
 
@@ -154,6 +156,17 @@ Explore recent AI-generated images:
 | `search_models_by_creator` | Models by creator | `username`, `sort` |
 | `get_models_by_type` | Filter by model type | `type`, `sort` |
 | `get_download_url` | Get model download URL | `modelVersionId` |
+| `get_enums` | Get valid enum values used by the API (model types, file types, base models) | — |
+| `get_current_user` | Get the account that `CIVITAI_API_KEY` belongs to | *(requires API key)* |
+| `lookup_users` | Resolve user IDs to usernames, or search by username prefix | `ids`, `query` |
+| `check_generation_permissions` | Check in bulk whether model versions can be used for generation | `entityIds` |
+| `get_vault` | Get the caller's Civitai Vault | *(requires API key + membership)* |
+| `list_vault_items` | List model versions stored in the caller's Vault | `query`, `types`, `sort` |
+| `check_vault_items` | Check which model version IDs are already in the caller's Vault | `modelVersionIds` |
+| `toggle_vault_item` | Add or remove a model version from the caller's Vault | `modelVersionId` |
+| `get_model_versions_by_hash` | Full model version details for up to 100 file hashes | `hashes` |
+| `get_model_version_ids_by_hash` | Resolve up to 10,000 file hashes to model version IDs | `hashes` |
+| `get_model_version_mini` | Lightweight model version summary for download/generation checks | `modelVersionId`, `epoch` |
 
 ## API Reference
 
@@ -303,7 +316,7 @@ MIT License - see LICENSE file for details
 
 ## Support
 
-- 🐛 **Bug Reports**: [GitHub Issues](https://github.com/Cicatriiz/civitai-mcp-server/issues)
-- 💡 **Feature Requests**: [GitHub Discussions](https://github.com/Cicatriiz/civitai-mcp-server/discussions)
+- 🐛 **Bug Reports**: [GitHub Issues](https://github.com/baoloc7401/civitai-mcp-server/issues)
+- 💡 **Feature Requests**: [GitHub Discussions](https://github.com/baoloc7401/civitai-mcp-server/discussions)
 - 📚 **Documentation**: [Civitai API Reference](https://github.com/civitai/civitai/wiki/REST-API-Reference)
 - 🔧 **MCP Documentation**: [Model Context Protocol](https://modelcontextprotocol.io/)
