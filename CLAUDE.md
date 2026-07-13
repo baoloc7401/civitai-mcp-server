@@ -31,3 +31,8 @@ When adding or changing a model-type or file-format enum, it must be updated in 
 ## Verifying changes
 
 `npm run build` catches type errors; to verify behavior, run `node comprehensive-test.js` against the live API. Zod validation errors in tool output usually mean the API's actual response drifted from a schema in `types.ts`, not a bug in the client logic.
+
+## Rules
+
+@.claude/rules/zod-schemas.md
+@.claude/rules/security.md
